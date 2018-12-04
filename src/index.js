@@ -15,6 +15,7 @@ if (!window.location.search) {
 }
 
 var projectID = urlParams.get("project_id");
+var projectName = urlParams.get("project_name");
 var userID = urlParams.get("user_id");
 var username = urlParams.get("username")
 var startDate = urlParams.get("exhibit_start_date");
@@ -27,9 +28,28 @@ window.appData = {
   projectCount: 0
 };
 
-checkValidProject();
+// checkValidProject();
+convertProjectNameToID();
 
-function checkValidProject() {
+function convertProjectNameToID() {
+  if (!projectID && projectName) {
+
+    var lowerCaseSpacesProjectName = projectName.replace(/-/g, ' '); // Here the name is converted to have spaces to match the panoptes API. However all words start with lowercase
+
+    apiClient.type('projects').get({ display_name: lowerCaseSpacesProjectName}) // This is where the url paramter project name needs to be used to query the panoptes api
+      .then(function (project) {
+        var projectID = project[0].id;
+        checkValidProject(projectID);
+      })
+      .catch((err) => {
+        throw new Error("Not a valid project");
+      });
+  } else {
+    checkValidProject(projectID);
+  }
+}
+
+function checkValidProject(projectID) {
   //Set the project name and throw error if not valid project or user id
   apiClient.type('projects').get(projectID)
     .then(function (project) {
@@ -39,35 +59,35 @@ function checkValidProject() {
       $(document).ready(function() {
         $("#total-count-info").append(project.display_name);
       });
-      convertUsernameToID();
+      convertUsernameToID(projectID);
     })
     .catch((err) => {
       throw new Error("Not a valid project ID");
     });
 }
 
-function convertUsernameToID() {
+function convertUsernameToID(projectID) {
   if (!userID && username) {
     apiClient.type('users').get({ login: username})
       .then(function (users) {
         var userID = users[0].id;
-        checkValidUser(userID);
+        checkValidUser(userID, projectID);
       })
       .catch((err) => {
         printNotValidUser()
         throw new Error("Not a valid username");
       });
   } else {
-    checkValidUser(userID);
+    checkValidUser(userID, projectID);
   }
 }
 
-function checkValidUser(userID) {
+function checkValidUser(userID, projectID) {
   //Throw error if not valid user id
   apiClient.type('users').get(userID)
     .then(function () {
       console.log("");
-      startApp(userID);
+      startApp(userID, projectID);
     })
     .catch((err) => {
       printNotValidUser()
@@ -75,20 +95,20 @@ function checkValidUser(userID) {
     });
 }
 
-function startApp(userID) {
+function startApp(userID, projectID) {
   var urlProjectUserClassifications = `https://stats.zooniverse.org/counts/classification/year?project_id=${projectID}&user_id=${userID}`;
   var urlProjectClassifications = `https://stats.zooniverse.org/counts/classification/year?project_id=${projectID}`;
   if (projectID && userID) {
-    initialisePage(urlProjectUserClassifications, urlProjectClassifications, userID);
+    initialisePage(urlProjectUserClassifications, urlProjectClassifications, userID, projectID);
   } else if (projectID) {
-    initialisePage("", urlProjectClassifications, userID);
+    initialisePage("", urlProjectClassifications, userID, projectID);
   }
 }
 
-function initialisePage(userQueryURL, projectQueryURL, userID) {
+function initialisePage(userQueryURL, projectQueryURL, userID, projectID) {
   setStartingCount(userQueryURL, "#counter");
   setStartingCount(projectQueryURL, "#total-count");
-  listenForClassifications(userID);
+  listenForClassifications(userID, projectID);
 }
 
 function setStartingCount(url, container) {
@@ -110,7 +130,7 @@ function setStartingCount(url, container) {
 }
 
 // Listen for panoptes classifications
-function listenForClassifications(userID) {
+function listenForClassifications(userID, projectID) {
   // This code runs each time a classification event comes down
   // the panoptes pusher pipe
   panoptesChannel.bind('classification', function(data) {
